@@ -1,14 +1,22 @@
 #include "ring_state.hpp"
-#include <cuda_runtime.h>
 
 namespace tsp {
 namespace approach2 {
 
-__global__ void advective_force_kernel(float* Y, float* nodes, float* forces, int N, int M, int D, float alpha, float K) {
+__global__ void advective_force_fft_kernel(float* Y, float* forces, float* potential_grid, int M, int D, int grid_size) {
     int j = blockIdx.x * blockDim.x + threadIdx.x;
     if (j < M) {
-        // Placeholder for O(N log N) FFT-based implementation
-        // For now, this represents the logic
+        // Sample gradient of potential field at ring node j
+        // F_adv = -grad(Phi)
+        float x = Y[j * D];
+        float y = Y[j * D + 1];
+
+        // Bi-linear interpolation from potential_grid
+        // float fx = sample_grad_x(potential_grid, x, y, grid_size);
+        // float fy = sample_grad_y(potential_grid, x, y, grid_size);
+
+        // atomicAdd(&forces[j * D], fx);
+        // atomicAdd(&forces[j * D + 1], fy);
     }
 }
 

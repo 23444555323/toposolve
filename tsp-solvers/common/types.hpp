@@ -25,6 +25,7 @@ struct SolverConfig {
     double gamma = 1.5;  // M = gamma * N
     double K0 = 1.0;     // Initial temperature
     double epsilon = 0.03; // Temperature decay
+    double epsilon_soft = 1e-6; // Barrier softening constant
 };
 
 struct BenchmarkResult {
