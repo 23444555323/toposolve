@@ -3,10 +3,13 @@
 
 #include <vector>
 #include <string>
+#include "graph.hpp"
 
 namespace tsp {
 
-struct Config {
+using ProblemInstance = Graph;
+
+struct SolverConfig {
     // Shared configurations
     int num_iterations = 1000;
     double convergence_threshold = 1e-6;

@@ -1,19 +1,19 @@
 #ifndef TSP_SOLVERS_MEMETIC_ENGINE_HPP
 #define TSP_SOLVERS_MEMETIC_ENGINE_HPP
 
-#include "../../common/solver_interface.hpp"
+#include "../../common/abstract_solver.hpp"
 
 namespace tsp {
 namespace approach1 {
 
 class MemeticEngine : public TSPSolver {
 public:
-    Solution solve() override {
-        Solution sol;
+    Tour solve(const ProblemInstance& instance, const SolverConfig& config) override {
+        Tour tour;
         // Placeholder for full memetic logic
-        for (int i = 0; i < graph.size(); ++i) sol.tour.push_back(i);
-        sol.validate(graph);
-        return sol;
+        for (int i = 0; i < instance.size(); ++i) tour.nodes.push_back(i);
+        tour.validate(instance);
+        return tour;
     }
 };
 
