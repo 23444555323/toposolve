@@ -30,7 +30,6 @@ __global__ void advective_force_fft_kernel(float* Y, float* forces, const float*
         float x = Y[j * D];
         float y = Y[j * D + 1];
 
-        // Gradient via central differences of interpolated potential
         float eps = 0.1f;
         float p_xp = sample_potential(potential_grid, x + eps, y, grid_size);
         float p_xm = sample_potential(potential_grid, x - eps, y, grid_size);
@@ -44,6 +43,9 @@ __global__ void advective_force_fft_kernel(float* Y, float* forces, const float*
         atomicAdd(&forces[j * D + 1], fy);
     }
 }
+
+// Declaration for the test harness
+void launch_advective_force_fft(float* Y, float* forces, const float* potential_grid, int M, int D, int grid_size, float alpha);
 
 } // namespace approach2
 } // namespace tsp
