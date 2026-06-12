@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <stdexcept>
+#include "types.hpp"
 
 namespace tsp {
 
@@ -21,10 +22,15 @@ public:
         nodes.push_back({static_cast<int>(nodes.size()), x, y, {}});
     }
 
-    double distance(int i, int j) const {
-        double dx = nodes[i].x - nodes[j].x;
-        double dy = nodes[i].y - nodes[j].y;
-        return std::sqrt(dx*dx + dy*dy);
+    double distance(int i, int j, DistanceMetric metric = DistanceMetric::EUCLIDEAN) const {
+        double dx = std::abs(nodes[i].x - nodes[j].x);
+        double dy = std::abs(nodes[i].y - nodes[j].y);
+        switch (metric) {
+            case DistanceMetric::MANHATTAN: return dx + dy;
+            case DistanceMetric::CHEBYSHEV: return std::max(dx, dy);
+            case DistanceMetric::EUCLIDEAN:
+            default: return std::sqrt(dx*dx + dy*dy);
+        }
     }
 
     int size() const {

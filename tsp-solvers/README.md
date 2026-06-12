@@ -93,11 +93,7 @@ tsp::Tour result = solver->solve(instance, config);
 ```
 
 ## 9. Performance Characteristics
-| Problem Size (N) | Engine 1 (CPU/GPU) | Engine 2 (H100) |
-|------------------|--------------------|-----------------|
-| 1,000            | ~50ms              | ~20ms           |
-| 10,000           | ~800ms             | ~150ms          |
-| 100,000          | ~12s               | ~1.2s           |
+Benchmarks in progress. Initial results show Engine 2 (Elastic Ring) scales significantly better for $N > 10^5$ due to $O(N \log N)$ FFT complexity.
 
 ## 10. Testing
 - `prototype_numpy/correctness_check.py`: Compares engine outputs against mathematical reference.

@@ -8,13 +8,7 @@ namespace approach2 {
 
 class ElasticEngine : public TSPSolver {
 public:
-    Tour solve(const ProblemInstance& instance, const SolverConfig& config) override {
-        Tour tour;
-        // Placeholder for elastic ring logic
-        for (int i = 0; i < instance.size(); ++i) tour.nodes.push_back(i);
-        tour.validate(instance);
-        return tour;
-    }
+    Tour solve(const ProblemInstance& instance, const SolverConfig& config) override;
 };
 
 } // namespace approach2

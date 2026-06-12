@@ -7,6 +7,12 @@
 
 namespace tsp {
 
+enum class DistanceMetric {
+    EUCLIDEAN,
+    MANHATTAN,
+    CHEBYSHEV
+};
+
 using ProblemInstance = Graph;
 
 struct SolverConfig {

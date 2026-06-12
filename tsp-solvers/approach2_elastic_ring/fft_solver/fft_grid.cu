@@ -1,9 +1,31 @@
 #include "ring_state.hpp"
 #include <cufft.h>
 #include <cuda_runtime.h>
+#include <device_launch_parameters.h>
 
 namespace tsp {
 namespace approach2 {
+
+__global__ void multiply_greens_kernel(cufftComplex* freq, int size) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < size && y < (size / 2 + 1)) {
+        int idx = y * size + x;
+        float kx = (x > size / 2) ? (float)(x - size) : (float)x;
+        float ky = (float)y;
+        float k_sq = kx * kx + ky * ky;
+
+        if (k_sq > 1e-6f) {
+            float g = -1.0f / k_sq;
+            freq[idx].x *= g;
+            freq[idx].y *= g;
+        } else {
+            freq[idx].x = 0;
+            freq[idx].y = 0;
+        }
+    }
+}
 
 struct FFTGrid {
     float* d_density;     // Rho: N x N grid
@@ -21,20 +43,18 @@ struct FFTGrid {
     }
 
     void solve_poisson() {
-        // 1. Forward FFT: Rho -> Rho_hat
         cufftExecR2C(plan_fwd, d_density, d_freq);
 
-        // 2. Multiply by Green's function in frequency domain: Phi_hat = Rho_hat * G_hat
-        // G_hat(kx, ky) = -1 / (kx^2 + ky^2)
-        // kernel_multiply_greens<<<...>>>(d_freq, grid_size);
+        dim3 threads(16, 16);
+        dim3 blocks((grid_size + threads.x - 1) / threads.x, (grid_size / 2 + 1 + threads.y - 1) / threads.y);
+        multiply_greens_kernel<<<blocks, threads>>>(d_freq, grid_size);
 
-        // 3. Inverse FFT: Phi_hat -> Phi (Potential)
         cufftExecC2R(plan_inv, d_freq, d_density);
     }
 
     ~FFTGrid() {
-        cudaFree(d_density);
-        cudaFree(d_freq);
+        if (d_density) cudaFree(d_density);
+        if (d_freq) cudaFree(d_freq);
         cufftDestroy(plan_fwd);
         cufftDestroy(plan_inv);
     }
