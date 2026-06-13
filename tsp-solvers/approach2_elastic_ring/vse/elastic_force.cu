@@ -12,7 +12,8 @@ __global__ void elastic_force_kernel(float* Y, float* forces, int M, int D, floa
             int prev = ((j - 1 + M) % M) * D + d;
 
             float f = beta * K * (Y[next] - 2 * Y[curr] + Y[prev]);
-            atomicAdd(&forces[curr], f);
+            // Each thread j uniquely maps to index curr, so direct accumulation is safe.
+            forces[curr] += f;
         }
     }
 }
@@ -20,7 +21,7 @@ __global__ void elastic_force_kernel(float* Y, float* forces, int M, int D, floa
 void compute_elastic_force(RingState& state, float beta, float K) {
     int threads = 256;
     int blocks = (state.M + threads - 1) / threads;
-    elastic_force_kernel<<<blocks, threads>>>(state.d_Y, state.d_forces, state.M, state.D, beta, K);
+    elastic_force_kernel<<<blocks, threads>>>(state.get_Y(), state.get_forces(), state.M, state.D, beta, K);
 }
 
 } // namespace approach2

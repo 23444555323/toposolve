@@ -14,7 +14,7 @@
 // External declarations for kernels/functions under test
 namespace tsp {
 namespace approach2 {
-void launch_advective_force_fft(float* Y, float* forces, const float* potential_grid, int M, int D, int grid_size, float alpha);
+void launch_advective_force_fft(float* Y, float* forces, cudaTextureObject_t potentialTex, int M, int D, int grid_size, float alpha);
 void deduplicate_and_cleanup(std::vector<int>& tour, const Graph& g);
 }
 }
@@ -30,11 +30,11 @@ void test_1_poisson_solver() {
     std::vector<float> host_density(size * size, 0.0f);
     host_density[(size/2) * size + (size/2)] = 100.0f; // Center spike
 
-    cudaMemcpy(grid.d_density, host_density.data(), size * size * sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(grid.d_density, host_density.data(), size * size * sizeof(float), cudaMemcpyHostToDevice));
     grid.solve_poisson();
 
     std::vector<float> host_potential(size * size);
-    cudaMemcpy(host_potential.data(), grid.d_density, size * size * sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(host_potential.data(), grid.d_density, size * size * sizeof(float), cudaMemcpyDeviceToHost));
 
     bool non_zero = false;
     for(float v : host_potential) if(std::abs(v) > 1e-6f) non_zero = true;
@@ -49,46 +49,63 @@ void test_1_poisson_solver() {
 }
 
 void test_2_advective_force() {
-    std::cout << "[Test 2] Advective Force Directionality... " << std::flush;
+    std::cout << "[Test 2] Advective Force (Texture Object)... " << std::flush;
     int size = 64;
     int M = 1;
     int D = 2;
 
     RingState state(M, D);
-    float* d_potential;
-    cudaMalloc(&d_potential, size * size * sizeof(float));
 
-    // Potential peak at (32, 32)
+    cudaArray_t cuArray;
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
+    CUDA_CHECK(cudaMallocArray(&cuArray, &channelDesc, size, size));
+
     std::vector<float> host_potential(size * size, 0.0f);
     host_potential[32 * size + 32] = 10.0f;
-    host_potential[32 * size + 33] = 8.0f; // Gradient in X
-    cudaMemcpy(d_potential, host_potential.data(), size * size * sizeof(float), cudaMemcpyHostToDevice);
+    host_potential[32 * size + 33] = 8.0f;
+    CUDA_CHECK(cudaMemcpy2DToArray(cuArray, 0, 0, host_potential.data(), size * sizeof(float), size * sizeof(float), size, cudaMemcpyHostToDevice));
 
-    // Node at (31.5, 32)
+    cudaResourceDesc resDesc;
+    memset(&resDesc, 0, sizeof(resDesc));
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = cuArray;
+
+    cudaTextureDesc texDesc;
+    memset(&texDesc, 0, sizeof(texDesc));
+    texDesc.addressMode[0] = cudaAddressModeWrap;
+    texDesc.addressMode[1] = cudaAddressModeWrap;
+    texDesc.filterMode = cudaFilterModeLinear;
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.normalizedCoords = 0;
+
+    cudaTextureObject_t texObj = 0;
+    CUDA_CHECK(cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL));
+
     float host_Y[2] = {31.5f, 32.0f};
-    cudaMemcpy(state.d_Y, host_Y, 2 * sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(state.get_Y(), host_Y, 2 * sizeof(float), cudaMemcpyHostToDevice));
 
-    launch_advective_force_fft(state.d_Y, state.d_forces, d_potential, M, D, size, 1.0f);
+    launch_advective_force_fft(state.get_Y(), state.get_forces(), texObj, M, D, size, 1.0f);
 
     float host_F[2];
-    cudaMemcpy(host_F, state.d_forces, 2 * sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(host_F, state.get_forces(), 2 * sizeof(float), cudaMemcpyDeviceToHost));
 
     assert(host_F[0] > 0 && "Force not pointing toward peak in X!");
 
-    cudaFree(d_potential);
+    CUDA_CHECK(cudaDestroyTextureObject(texObj));
+    CUDA_CHECK(cudaFreeArray(cuArray));
     std::cout << "PASSED" << std::endl;
 }
 
 void test_3_resource_safety() {
-    std::cout << "[Test 3] RingState Move Semantics... " << std::flush;
+    std::cout << "[Test 3] RingState RAII Move Semantics... " << std::flush;
     {
         RingState s1(10, 2);
-        float* ptr = s1.d_Y;
+        float* ptr = s1.get_Y();
         RingState s2 = std::move(s1);
-        assert(s1.d_Y == nullptr);
-        assert(s2.d_Y == ptr);
-    } // s2 should free ptr, s1 should do nothing
-    std::cout << "PASSED (Check with compute-sanitizer for full validation)" << std::endl;
+        assert(s1.get_Y() == nullptr);
+        assert(s2.get_Y() == ptr);
+    }
+    std::cout << "PASSED" << std::endl;
 }
 
 void test_4_integration() {

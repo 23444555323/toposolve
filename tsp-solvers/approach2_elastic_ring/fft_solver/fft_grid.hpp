@@ -16,8 +16,8 @@ struct FFTGrid {
     int grid_size;
 
     FFTGrid(int size) : grid_size(size) {
-        cudaMalloc(&d_density, size * size * sizeof(float));
-        cudaMalloc(&d_freq, size * (size / 2 + 1) * sizeof(cufftComplex));
+        CUDA_CHECK(cudaMalloc(&d_density, size * size * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_freq, size * (size / 2 + 1) * sizeof(cufftComplex)));
 
         cufftPlan2d(&plan_fwd, size, size, CUFFT_R2C);
         cufftPlan2d(&plan_inv, size, size, CUFFT_C2R);

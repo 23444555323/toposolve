@@ -3,9 +3,20 @@
 
 #include <vector>
 #include <string>
+#include <stdexcept>
+#include <cuda_runtime.h>
 #include "graph.hpp"
 
+#define CUDA_CHECK(ans) { tsp::gpuAssert((ans), __FILE__, __LINE__); }
+
 namespace tsp {
+
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true) {
+   if (code != cudaSuccess) {
+      std::string err = "CUDA_CHECK: " + std::string(cudaGetErrorString(code)) + " " + std::string(file) + ":" + std::to_string(line);
+      if (abort) throw std::runtime_error(err);
+   }
+}
 
 enum class DistanceMetric {
     EUCLIDEAN,

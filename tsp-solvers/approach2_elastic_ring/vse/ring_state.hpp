@@ -4,56 +4,57 @@
 #include <cuda_runtime.h>
 #include <vector>
 #include <utility>
+#include <memory>
+#include "../../common/types.hpp"
 
 namespace tsp {
 namespace approach2 {
 
+struct CudaDeleter {
+    void operator()(float* ptr) const {
+        if (ptr) cudaFree(ptr);
+    }
+};
+
+template<typename T>
+using cuda_unique_ptr = std::unique_ptr<T[], CudaDeleter>;
+
 struct RingState {
-    float* d_Y = nullptr;        // Ring node coordinates (M x D)
-    float* d_V = nullptr;        // Velocities for Nesterov (M x D)
-    float* d_forces = nullptr;   // Total forces (M x D)
+    cuda_unique_ptr<float> d_Y;        // Ring node coordinates (M x D)
+    cuda_unique_ptr<float> d_V;        // Velocities for Nesterov (M x D)
+    cuda_unique_ptr<float> d_forces;   // Total forces (M x D)
     int M = 0;
     int D = 0;
 
     RingState() = default;
     RingState(int M, int D) : M(M), D(D) {
-        cudaMalloc(&d_Y, M * D * sizeof(float));
-        cudaMalloc(&d_V, M * D * sizeof(float));
-        cudaMalloc(&d_forces, M * D * sizeof(float));
-        cudaMemset(d_V, 0, M * D * sizeof(float));
-        cudaMemset(d_forces, 0, M * D * sizeof(float));
+        float *y, *v, *f;
+        CUDA_CHECK(cudaMalloc(&y, M * D * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&v, M * D * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&f, M * D * sizeof(float)));
+
+        d_Y.reset(y);
+        d_V.reset(v);
+        d_forces.reset(f);
+
+        CUDA_CHECK(cudaMemset(d_V.get(), 0, M * D * sizeof(float)));
+        CUDA_CHECK(cudaMemset(d_forces.get(), 0, M * D * sizeof(float)));
     }
 
-    ~RingState() {
-        if (d_Y) cudaFree(d_Y);
-        if (d_V) cudaFree(d_V);
-        if (d_forces) cudaFree(d_forces);
-    }
+    // Rule of 5:
+    // Destructor is default because unique_ptr handles it.
+    // Move constructor/assignment are default.
+    RingState(RingState&&) noexcept = default;
+    RingState& operator=(RingState&&) noexcept = default;
 
-    // Delete copy operations
+    // Delete copy operations.
     RingState(const RingState&) = delete;
     RingState& operator=(const RingState&) = delete;
 
-    // Default move operations
-    RingState(RingState&& other) noexcept
-        : d_Y(std::exchange(other.d_Y, nullptr)),
-          d_V(std::exchange(other.d_V, nullptr)),
-          d_forces(std::exchange(other.d_forces, nullptr)),
-          M(other.M), D(other.D) {}
-
-    RingState& operator=(RingState&& other) noexcept {
-        if (this != &other) {
-            if (d_Y) cudaFree(d_Y);
-            if (d_V) cudaFree(d_V);
-            if (d_forces) cudaFree(d_forces);
-            d_Y = std::exchange(other.d_Y, nullptr);
-            d_V = std::exchange(other.d_V, nullptr);
-            d_forces = std::exchange(other.d_forces, nullptr);
-            M = other.M;
-            D = other.D;
-        }
-        return *this;
-    }
+    // Convenience accessors for raw pointers
+    float* get_Y() const { return d_Y.get(); }
+    float* get_V() const { return d_V.get(); }
+    float* get_forces() const { return d_forces.get(); }
 };
 
 } // namespace approach2
