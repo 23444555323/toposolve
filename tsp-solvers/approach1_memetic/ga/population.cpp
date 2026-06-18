@@ -8,8 +8,12 @@
 namespace tsp {
 namespace approach1 {
 
+// Forward declarations of operators
+void edge_ordered_crossover(const Chromosome& p1, const Chromosome& p2, Chromosome& child);
+void levy_flight_mutation(Chromosome& c);
+
 void Island::evolve_step(const Graph& instance) {
-    // Calculate actual route distance for each chromosome
+    // 1. Calculate actual route distance for each chromosome
     for (auto& ind : individuals) {
         if (!ind.genes.empty()) {
             double route_len = 0.0;
@@ -21,6 +25,31 @@ void Island::evolve_step(const Graph& instance) {
             ind.fitness = route_len;
         }
     }
+
+    // 2. Perform Tournament Selection & Evolve
+    std::vector<Chromosome> next_generation;
+    std::random_device rd;
+    std::mt19937 rng(rd());
+
+    // Keep the single best elite chromosome intact
+    next_generation.push_back(get_best());
+
+    while (next_generation.size() < individuals.size()) {
+        auto select_parent = [&](const std::vector<Chromosome>& pop) {
+            int idx1 = rng() % pop.size();
+            int idx2 = rng() % pop.size();
+            return pop[idx1].fitness < pop[idx2].fitness ? pop[idx1] : pop[idx2];
+        };
+
+        Chromosome parent1 = select_parent(individuals);
+        Chromosome parent2 = select_parent(individuals);
+        Chromosome child;
+
+        edge_ordered_crossover(parent1, parent2, child);
+        levy_flight_mutation(child);
+        next_generation.push_back(std::move(child));
+    }
+    individuals = std::move(next_generation);
 }
 
 Chromosome Island::get_best() {

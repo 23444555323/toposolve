@@ -25,20 +25,30 @@ Tour ElasticEngine::solve(const ProblemInstance& instance, const SolverConfig& c
     int N = instance.size();
     int M = static_cast<int>(config.gamma * N);
     int D = 2;
+    int grid_size = 256;
 
     RingState state(M, D);
-    FFTGrid grid(256);
+    FFTGrid grid(grid_size);
     AnnealingSchedule schedule { static_cast<float>(config.K0), static_cast<float>(config.epsilon) };
 
-    // 1. Initialize Ring coordinates as a small circle around centroid
-    float centroid_x = 0.0f, centroid_y = 0.0f;
+    // 1. Density projection (Discretize city coordinates onto grid)
+    std::vector<float> density_host(grid_size * grid_size, 0.0f);
+    float max_x = 0, max_y = 0;
     for (const auto& node : instance.nodes) {
-        centroid_x += static_cast<float>(node.x);
-        centroid_y += static_cast<float>(node.y);
+        max_x = std::max(max_x, (float)node.x);
+        max_y = std::max(max_y, (float)node.y);
     }
-    centroid_x /= N;
-    centroid_y /= N;
 
+    for (const auto& node : instance.nodes) {
+        int gx = std::clamp(static_cast<int>((node.x / (max_x + 1e-6)) * (grid_size - 1)), 0, grid_size - 1);
+        int gy = std::clamp(static_cast<int>((node.y / (max_y + 1e-6)) * (grid_size - 1)), 0, grid_size - 1);
+        density_host[gy * grid_size + gx] += 1.0f;
+    }
+    CUDA_CHECK(cudaMemcpy(grid.d_density.get(), density_host.data(),
+                          grid_size * grid_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    // 2. Initialize Ring coordinates as a small circle around centroid
+    float centroid_x = 0.5f, centroid_y = 0.5f; // Normalized centroid
     float radius = 0.1f;
     std::vector<float> host_Y(M * D);
     for (int j = 0; j < M; ++j) {
@@ -48,34 +58,58 @@ Tour ElasticEngine::solve(const ProblemInstance& instance, const SolverConfig& c
     }
     CUDA_CHECK(cudaMemcpy(state.get_Y(), host_Y.data(), M * D * sizeof(float), cudaMemcpyHostToDevice));
 
-    // 2. Integration loop (Euler-Nesterov step)
+    // 3. Integration loop
     float dt = 0.1f;
     float mu = 0.9f;
     for (int i = 0; i < config.num_iterations; ++i) {
         grid.solve_poisson();
         compute_elastic_force(state, config.beta, schedule.K);
 
-        // Potential texture setup and advective force evaluation omitted for now
+        // Bind potential grid as a texture
+        cudaArray_t cuArray;
+        cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
+        CUDA_CHECK(cudaMallocArray(&cuArray, &channelDesc, grid_size, grid_size));
+        CUDA_CHECK(cudaMemcpy2DToArray(cuArray, 0, 0, grid.d_density.get(),
+                                      grid_size * sizeof(float), grid_size * sizeof(float),
+                                      grid_size, cudaMemcpyDeviceToDevice));
 
+        cudaResourceDesc resDesc;
+        memset(&resDesc, 0, sizeof(resDesc));
+        resDesc.resType = cudaResourceTypeArray;
+        resDesc.res.array.array = cuArray;
+
+        cudaTextureDesc texDesc;
+        memset(&texDesc, 0, sizeof(texDesc));
+        texDesc.addressMode[0] = cudaAddressModeClamp;
+        texDesc.addressMode[1] = cudaAddressModeClamp;
+        texDesc.filterMode = cudaFilterModeLinear;
+        texDesc.readMode = cudaReadModeElementType;
+        texDesc.normalizedCoords = 1; // [0.0, 1.0]
+
+        cudaTextureObject_t potentialTex = 0;
+        CUDA_CHECK(cudaCreateTextureObject(&potentialTex, &resDesc, &texDesc, NULL));
+
+        launch_advective_force_fft(state.get_Y(), state.get_forces(), potentialTex, M, D, grid_size, config.alpha);
         launch_nesterov_pde(state.get_Y(), state.get_V(), state.get_forces(), M, D, dt, mu);
+
+        CUDA_CHECK(cudaDestroyTextureObject(potentialTex));
+        CUDA_CHECK(cudaFreeArray(cuArray));
+
         schedule.step();
     }
 
-    // Copy ring positions back to host
+    // Copy ring positions back and unnormalize if needed
     CUDA_CHECK(cudaMemcpy(host_Y.data(), state.get_Y(), M * D * sizeof(float), cudaMemcpyDeviceToHost));
 
-    // Prepare host city positions
     std::vector<float> host_nodes(N * D);
     for (int i = 0; i < N; ++i) {
-        host_nodes[i * D] = static_cast<float>(instance.nodes[i].x);
-        host_nodes[i * D + 1] = static_cast<float>(instance.nodes[i].y);
+        host_nodes[i * D] = static_cast<float>(instance.nodes[i].x / (max_x + 1e-6));
+        host_nodes[i * D + 1] = static_cast<float>(instance.nodes[i].y / (max_y + 1e-6));
     }
 
-    // 3. BMU (Best Matching Unit) Search
     std::vector<int> bmus(N);
-    find_bmus(host_nodes.data(), N, host_Y.data(), M, D, bmus.data());
+    find_bmus_cuda(host_nodes.data(), N, host_Y.data(), M, D, bmus.data());
 
-    // 4. Construct the Tour based on sorted BMU index positions along the elastic ring
     std::vector<int> tour_indices(N);
     std::iota(tour_indices.begin(), tour_indices.end(), 0);
     std::sort(tour_indices.begin(), tour_indices.end(), [&](int a, int b) {
@@ -84,8 +118,6 @@ Tour ElasticEngine::solve(const ProblemInstance& instance, const SolverConfig& c
 
     Tour tour;
     tour.nodes = std::move(tour_indices);
-
-    // 5. Run the 2-opt cleanup sweep
     deduplicate_and_cleanup(tour.nodes, instance);
     tour.validate(instance);
     return tour;
