@@ -8,16 +8,21 @@
 #include "../../common/types.hpp"
 
 namespace tsp {
-namespace approach2 {
 
 struct CudaDeleter {
     void operator()(float* ptr) const {
-        if (ptr) cudaFree(ptr);
+        if (ptr) CUDA_CHECK(cudaFree(ptr));
+    }
+    void operator()(cufftComplex* ptr) const {
+        // Simple cast for cuFFT memory which is also device memory
+        if (ptr) CUDA_CHECK(cudaFree(ptr));
     }
 };
 
 template<typename T>
 using cuda_unique_ptr = std::unique_ptr<T[], CudaDeleter>;
+
+namespace approach2 {
 
 struct RingState {
     cuda_unique_ptr<float> d_Y;        // Ring node coordinates (M x D)
@@ -41,17 +46,12 @@ struct RingState {
         CUDA_CHECK(cudaMemset(d_forces.get(), 0, M * D * sizeof(float)));
     }
 
-    // Rule of 5:
-    // Destructor is default because unique_ptr handles it.
-    // Move constructor/assignment are default.
     RingState(RingState&&) noexcept = default;
     RingState& operator=(RingState&&) noexcept = default;
 
-    // Delete copy operations.
     RingState(const RingState&) = delete;
     RingState& operator=(const RingState&) = delete;
 
-    // Convenience accessors for raw pointers
     float* get_Y() const { return d_Y.get(); }
     float* get_V() const { return d_V.get(); }
     float* get_forces() const { return d_forces.get(); }

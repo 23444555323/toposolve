@@ -25,6 +25,7 @@ public:
     Population(int n_islands, int pop_per_island);
     void evolve();
     void migrate();
+    Chromosome get_best_global();
 };
 
 } // namespace approach1

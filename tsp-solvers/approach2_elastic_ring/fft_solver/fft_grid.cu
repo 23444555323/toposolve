@@ -25,5 +25,15 @@ __global__ void multiply_greens_kernel(cufftComplex* freq, int size) {
     }
 }
 
+void FFTGrid::solve_poisson() {
+    cufftExecR2C(plan_fwd, d_density.get(), d_freq.get());
+
+    dim3 threads(16, 16);
+    dim3 blocks((grid_size + threads.x - 1) / threads.x, (grid_size / 2 + 1 + threads.y - 1) / threads.y);
+    multiply_greens_kernel<<<blocks, threads>>>(d_freq.get(), grid_size);
+
+    cufftExecC2R(plan_inv, d_freq.get(), d_density.get());
+}
+
 } // namespace approach2
 } // namespace tsp

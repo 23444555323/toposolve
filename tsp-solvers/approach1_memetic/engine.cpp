@@ -10,8 +10,18 @@ Tour MemeticEngine::solve(const ProblemInstance& instance, const SolverConfig& c
         pop.evolve();
     }
 
+    // Extract best chromosome from all islands
+    // For now, take from the first island as a simplified integration
+    Chromosome best = pop.get_best_global();
+
     Tour tour;
-    for (int i = 0; i < instance.size(); ++i) tour.nodes.push_back(i);
+    if (best.genes.empty()) {
+        // Fallback to sequential if no evolution happened
+        for (int i = 0; i < instance.size(); ++i) tour.nodes.push_back(i);
+    } else {
+        tour.nodes = best.genes;
+    }
+
     tour.validate(instance);
     return tour;
 }
