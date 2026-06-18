@@ -10,12 +10,12 @@
 #include "approach2_elastic_ring/engine.hpp"
 #include "common/graph.hpp"
 #include "common/solution.hpp"
+#include "approach2_elastic_ring/dtml/dtml.hpp"
 
 // External declarations for kernels/functions under test
 namespace tsp {
 namespace approach2 {
 void launch_advective_force_fft(float* Y, float* forces, cudaTextureObject_t potentialTex, int M, int D, int grid_size, float alpha);
-void deduplicate_and_cleanup(std::vector<int>& tour, const Graph& g);
 }
 }
 
@@ -30,11 +30,11 @@ void test_1_poisson_solver() {
     std::vector<float> host_density(size * size, 0.0f);
     host_density[(size/2) * size + (size/2)] = 100.0f; // Center spike
 
-    CUDA_CHECK(cudaMemcpy(grid.d_density, host_density.data(), size * size * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(grid.d_density.get(), host_density.data(), size * size * sizeof(float), cudaMemcpyHostToDevice));
     grid.solve_poisson();
 
     std::vector<float> host_potential(size * size);
-    CUDA_CHECK(cudaMemcpy(host_potential.data(), grid.d_density, size * size * sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(host_potential.data(), grid.d_density.get(), size * size * sizeof(float), cudaMemcpyDeviceToHost));
 
     bool non_zero = false;
     for(float v : host_potential) if(std::abs(v) > 1e-6f) non_zero = true;

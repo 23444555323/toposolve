@@ -10,12 +10,11 @@
 namespace tsp {
 
 struct CudaDeleter {
-    void operator()(float* ptr) const {
-        if (ptr) CUDA_CHECK(cudaFree(ptr));
-    }
-    void operator()(cufftComplex* ptr) const {
-        // Simple cast for cuFFT memory which is also device memory
-        if (ptr) CUDA_CHECK(cudaFree(ptr));
+    template <typename T>
+    void operator()(T* ptr) const {
+        if (ptr) {
+            CUDA_CHECK(cudaFree(ptr));
+        }
     }
 };
 

@@ -3,47 +3,57 @@
 #include <iostream>
 #include <omp.h>
 #include <random>
+#include <numeric>
 
 namespace tsp {
 namespace approach1 {
 
-void Island::evolve_step() {
-    // Evaluate fitness of chromosomes (mock/basic evolution logic placeholder)
+void Island::evolve_step(const Graph& instance) {
+    // Calculate actual route distance for each chromosome
     for (auto& ind : individuals) {
         if (!ind.genes.empty()) {
-            ind.fitness = 0.0;
+            double route_len = 0.0;
+            for (size_t i = 0; i < ind.genes.size(); ++i) {
+                int u = ind.genes[i];
+                int v = ind.genes[(i + 1) % ind.genes.size()];
+                route_len += instance.distance(u, v);
+            }
+            ind.fitness = route_len;
         }
     }
 }
 
 Chromosome Island::get_best() {
     if (individuals.empty()) {
-        return Chromosome{{}, 1e18}; // Safe default to prevent dereferencing empty vector
+        return Chromosome{{}, 1e18};
     }
     return *std::min_element(individuals.begin(), individuals.end(),
         [](const Chromosome& a, const Chromosome& b) { return a.fitness < b.fitness; });
 }
 
-Population::Population(int n_islands, int pop_per_island) : num_islands(n_islands) {
+Population::Population(int n_islands, int pop_per_island, int num_nodes) : num_islands(n_islands) {
+    std::random_device rd;
+    std::mt19937 rng(rd());
+
     for (int i = 0; i < n_islands; ++i) {
         Island island;
         island.id = i;
-        // Allocate and initialize population chromosomes to avoid segfaults
         for (int j = 0; j < pop_per_island; ++j) {
             Chromosome c;
-            // Initialize with a random permutation for validity
-            // Mocking for now, in real scenario we'd use instance size
-            c.fitness = static_cast<double>(rand()) / RAND_MAX;
+            c.genes.resize(num_nodes);
+            std::iota(c.genes.begin(), c.genes.end(), 0);
+            std::shuffle(c.genes.begin(), c.genes.end(), rng);
+            c.fitness = 1e18;
             island.individuals.push_back(c);
         }
         islands.push_back(island);
     }
 }
 
-void Population::evolve() {
+void Population::evolve(const Graph& instance) {
     #pragma omp parallel for
     for (int i = 0; i < num_islands; ++i) {
-        islands[i].evolve_step();
+        islands[i].evolve_step(instance);
     }
     generation_count++;
     if (generation_count % migration_interval == 0) migrate();
