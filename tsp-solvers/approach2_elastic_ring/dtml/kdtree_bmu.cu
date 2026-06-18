@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#include "../../common/types.hpp"
 
 namespace tsp {
 namespace approach2 {
@@ -29,22 +30,22 @@ void find_bmus_cuda(const float* nodes, int N, const float* ring, int M, int D, 
     float *d_nodes, *d_ring;
     int *d_bmus;
 
-    cudaMalloc(&d_nodes, N * D * sizeof(float));
-    cudaMalloc(&d_ring, M * D * sizeof(float));
-    cudaMalloc(&d_bmus, N * sizeof(int));
+    CUDA_CHECK(cudaMalloc(&d_nodes, N * D * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_ring, M * D * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_bmus, N * sizeof(int)));
 
-    cudaMemcpy(d_nodes, nodes, N * D * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_ring, ring, M * D * sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_nodes, nodes, N * D * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_ring, ring, M * D * sizeof(float), cudaMemcpyHostToDevice));
 
     int threads = 256;
     int blocks = (N + threads - 1) / threads;
     find_bmus_cuda_kernel<<<blocks, threads>>>(d_nodes, N, d_ring, M, D, d_bmus);
 
-    cudaMemcpy(bmus, d_bmus, N * sizeof(int), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(bmus, d_bmus, N * sizeof(int), cudaMemcpyDeviceToHost));
 
-    cudaFree(d_nodes);
-    cudaFree(d_ring);
-    cudaFree(d_bmus);
+    CUDA_CHECK(cudaFree(d_nodes));
+    CUDA_CHECK(cudaFree(d_ring));
+    CUDA_CHECK(cudaFree(d_bmus));
 }
 
 } // namespace approach2
